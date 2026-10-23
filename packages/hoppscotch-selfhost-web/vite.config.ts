@@ -114,7 +114,9 @@ export default defineConfig({
           nuxtStyle: true,
           allowRobots: true,
           dest: ".sitemap-gen",
-          hostname: ENV.VITE_BASE_URL,
+          // The production container deliberately uses runtime environment
+          // injection, so this build-time value is not always present.
+          hostname: ENV.VITE_BASE_URL || "http://localhost/",
         })
       },
     }),
