@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Post,
   Query,
   Request,
@@ -43,6 +44,37 @@ export class AuthController {
   async getAuthProviders() {
     const providers = await this.authService.getAuthProviders();
     return { providers };
+  }
+
+  /**
+   * Exchanges a verified reverse-auth identity for Hoppscotch session cookies.
+   *
+   * It is disabled by default. Deployments enabling it must keep the backend
+   * private and use a gateway that replaces these headers after authentication.
+   */
+  @Get('trusted-gateway')
+  async trustedGatewayAuth(
+    @Headers('x-auth-request-email') email: string | undefined,
+    @Headers('x-forwarded-email') forwardedEmail: string | undefined,
+    @Headers('x-auth-request-user') displayName: string | undefined,
+    @Res() res: Response,
+  ) {
+    if (this.configService.get('HOPPSCOTCH_TRUSTED_GATEWAY_AUTH') !== 'true') {
+      throwHTTPErr({ message: 'Not found', statusCode: 404 });
+    }
+
+    const user = await this.authService.signInTrustedGateway(
+      email ?? forwardedEmail,
+      displayName,
+    );
+    if (E.isLeft(user)) throwHTTPErr(user.left);
+
+    const authTokens = await this.authService.generateAuthTokens(
+      user.right.uid,
+    );
+    if (E.isLeft(authTokens)) throwHTTPErr(authTokens.left);
+
+    authCookieHandler(res, authTokens.right, false, null, this.configService);
   }
 
   /**

@@ -126,6 +126,53 @@ describe('signInMagicLink', () => {
   });
 });
 
+describe('signInTrustedGateway', () => {
+  test('fails closed when the gateway does not provide an email', async () => {
+    const result = await authService.signInTrustedGateway(undefined);
+
+    expect(result).toEqualLeft({
+      message: 'Trusted gateway did not provide a valid email address',
+      statusCode: HttpStatus.UNAUTHORIZED,
+    });
+  });
+
+  test('creates a local account for a new verified gateway identity', async () => {
+    mockUser.findUserByEmail.mockResolvedValueOnce(O.none);
+    mockUser.createUserViaTrustedGateway.mockResolvedValueOnce(user);
+
+    const result = await authService.signInTrustedGateway(
+      'DWIGHT@DUNDERMIFFLIN.COM',
+      'Dwight Schrute',
+    );
+
+    expect(mockUser.createUserViaTrustedGateway).toHaveBeenCalledWith(
+      'dwight@dundermifflin.com',
+      'Dwight Schrute',
+    );
+    expect(result).toEqualRight(user);
+  });
+
+  test('links an existing local account to the trusted gateway', async () => {
+    mockUser.findUserByEmail.mockResolvedValueOnce(O.some(user));
+    mockPrisma.account.findUnique.mockResolvedValueOnce(null);
+    mockUser.createProviderAccount.mockResolvedValueOnce(accountDetails);
+    mockUser.updateUserLastLoggedOn.mockResolvedValueOnce(E.right(true));
+
+    const result = await authService.signInTrustedGateway(user.email);
+
+    expect(mockUser.createProviderAccount).toHaveBeenCalledWith(
+      user,
+      null,
+      null,
+      {
+        provider: 'trusted_gateway',
+        id: user.email,
+      },
+    );
+    expect(result).toEqualRight(user);
+  });
+});
+
 describe('verifyMagicLinkTokens', () => {
   test('Should throw INVALID_MAGIC_LINK_DATA if data is invalid', async () => {
     mockPrisma.verificationToken.findUniqueOrThrow.mockRejectedValueOnce(

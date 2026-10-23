@@ -151,6 +151,57 @@ export class AuthService {
   }
 
   /**
+   * Resolves an identity already authenticated by a reverse-auth gateway.
+   *
+   * This deliberately accepts no provider access token. The route that calls
+   * it is only enabled for installations that place the backend behind a
+   * trusted gateway which overwrites the identity headers on every request.
+   */
+  async signInTrustedGateway(email: string | undefined, displayName?: string) {
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedEmail || !validateEmail(normalizedEmail)) {
+      return E.left(<RESTError>{
+        message: 'Trusted gateway did not provide a valid email address',
+        statusCode: HttpStatus.UNAUTHORIZED,
+      });
+    }
+
+    const existingUser =
+      await this.usersService.findUserByEmail(normalizedEmail);
+
+    if (O.isNone(existingUser)) {
+      return E.right(
+        await this.usersService.createUserViaTrustedGateway(
+          normalizedEmail,
+          displayName?.trim(),
+        ),
+      );
+    }
+
+    const gatewayProfile = {
+      provider: 'trusted_gateway',
+      id: normalizedEmail,
+    };
+    const providerAccountExists = await this.checkIfProviderAccountExists(
+      existingUser.value,
+      gatewayProfile,
+    );
+
+    if (O.isNone(providerAccountExists)) {
+      await this.usersService.createProviderAccount(
+        existingUser.value,
+        null,
+        null,
+        gatewayProfile,
+      );
+    }
+
+    await this.usersService.updateUserLastLoggedOn(existingUser.value.uid);
+    return E.right(existingUser.value);
+  }
+
+  /**
    * Deleted used VerificationToken tokens
    *
    * @param passwordlessTokens VerificationToken entry to delete from DB

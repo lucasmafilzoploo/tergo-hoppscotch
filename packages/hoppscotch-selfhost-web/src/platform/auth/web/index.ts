@@ -39,6 +39,23 @@ async function signInUserWithMicrosoftFB() {
   }/auth/microsoft`
 }
 
+async function signInWithTrustedGateway() {
+  if (import.meta.env.VITE_TRUSTED_GATEWAY_AUTH !== "true") return false
+
+  try {
+    const res = await axios.get(
+      `${import.meta.env.VITE_BACKEND_API_URL}/auth/trusted-gateway`,
+      { withCredentials: true }
+    )
+
+    return res.status === 200
+  } catch (_) {
+    // The endpoint stays unavailable unless the deployment explicitly enables
+    // trusted gateway authentication. The normal login UI remains the fallback.
+    return false
+  }
+}
+
 async function getInitialUserDetails() {
   const res = await axios.post<{
     data?: {
@@ -253,6 +270,13 @@ export const def: AuthPlatformDef = {
     )
     probableUser$.next(probableUser)
     await setInitialUser()
+
+    // The reverse-auth gateway has already verified the browser identity. On
+    // a first visit it has no Hoppscotch cookies yet, so exchange that trusted
+    // identity once and then load the newly created local account.
+    if (!currentUser$.value && (await signInWithTrustedGateway())) {
+      await setInitialUser()
+    }
   },
 
   waitProbableLoginToConfirm() {
